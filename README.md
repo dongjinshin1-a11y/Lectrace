@@ -13,14 +13,14 @@ Use the right arrow key to advance through the code and inspect variables. Read 
 | 0:00–2:00 | Introduction | Pathology problem, two research questions, controlled experiment |
 | 2:00–3:00 | State 1 — input | Real split counts, binary filtering, 2×2 averaging, balanced batches |
 | 3:00–4:40 | State 2 — colour | The actual augmentation parameter ranges, RGB stress operator, reconstruction comparator |
-| 4:40–6:10 | State 3 — CNN | Nine-layer model, sigmoid illustration, actual seed-2026 error counts |
+| 4:40–6:10 | State 3 — CNN | Architecture-derived dimensions, prediction rule, recall/specificity from actual seed-2026 error counts |
 | 6:10–7:25 | State 4 — validation | Saved BCE change, fair checkpoint selection, clean AUROCs and baselines |
 | 7:25–9:15 | State 5 — robustness | Averaged gains, worst-condition AUROCs in both seeds, H&E comparator caveat |
 | 9:15–10:00 | Conclusion | What the results support, what remains unproven, next experiments |
 
 ## Scientific provenance
 
-All measured values are transcribed from `PathMNIST_Tellez_Inspired_Reviewed_3(4).ipynb` and cross-checked against `PathMNIST_Colour_Robustness_Report(3).docx`. Dataset counts, architecture, training configuration, confusion-matrix errors and robustness metrics come from the executed experiment. Numeric RGB pixels, 2×2 block values and sigmoid inputs in this script are **illustrative**, not claims about specific test patches or loaded neural weights.
+All measured values are transcribed from `PathMNIST_Tellez_Inspired_.ipynb` and cross-checked against `PathMNIST_Colour_Robustness_Report(4).docx`. Dataset counts, architecture, training configuration, confusion-matrix errors and robustness metrics come from the executed experiment. The two image panels are embedded PNG outputs from notebook cells 5 and 9 (zero-based). There are no invented pixel values or logits. CNN shape arithmetic is derived from the implemented architecture and is not a recorded trained forward pass. Checkpoint selection is replayed from rounded validation logs, with the same selected epoch as the saved checkpoint summary.
 
 The actual evaluation includes six training conditions, two paired seeds, eight epochs, 1,974 test patches, and 18 test conditions per trained CNN. HSV training improved observed synthetic RGB robustness; no statistical significance for the RGB–HSV contrasts or real-world clinical generalisation is claimed. H&E effects are small and should be interpreted against the HED reconstruction comparator as well as the unaugmented model.
 
@@ -37,3 +37,11 @@ lectrace serve 01_pathmnist_colour_robustness.py
 ```
 
 GitHub Actions automatically builds and deploys the site after a push to `main`. GitHub Pages must use **GitHub Actions** as the source.
+
+## Source identity and remaining evidence requirement
+
+Notebook SHA-256: `2745a3597c474efbc5091b5215db7e11535d7763107af79bf861f900bc9d3127`. Source filenames were updated to the files supplied for the 25 October review. All reported aggregate results remain unchanged. AI assisted with the presentation edits; researcher review is required.
+
+To demonstrate an actual trained forward pass, export a real patch, layer activations/shapes, logit and score from an existing saved checkpoint. Neither the notebook attachment nor this repository includes those weights. Do not describe the current shape calculation as trained inference.
+
+Cover-page state list: input/data; colour transformations; CNN computation and prediction errors; checkpoint selection; robustness evaluation. Use the beginning link above, not a URL containing `step=80`.
