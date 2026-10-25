@@ -147,6 +147,8 @@ def main():
     saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
     if not (saved.get("mode") == MODEL_MODE and int(saved.get("seed")) == SEED):
         raise ValueError("Checkpoint mode / seed mismatch")
+    if saved.get("signature") != "b23920e3df2dc882":
+        raise ValueError("Checkpoint does not match the submitted experiment configuration")
     model = TissueCNN().eval()
     model.load_state_dict(saved["model"], strict=True)
     assert sum(p.numel() for p in model.parameters()) == 1_243_985
