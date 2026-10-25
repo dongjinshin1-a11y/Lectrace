@@ -13,14 +13,14 @@ Use the right arrow key to advance through the code and inspect variables. Read 
 | 0:00–2:00 | Introduction | Pathology problem, two research questions, controlled experiment |
 | 2:00–3:00 | State 1 — input | Real split counts, binary filtering, 2×2 averaging, balanced batches |
 | 3:00–4:40 | State 2 — colour | The actual augmentation parameter ranges, RGB stress operator, reconstruction comparator |
-| 4:40–6:10 | State 3 — CNN | Architecture-derived dimensions, prediction rule, recall/specificity from actual seed-2026 error counts |
-| 6:10–7:25 | State 4 — validation | Saved BCE change, fair checkpoint selection, clean AUROCs and baselines |
+| 4:40–6:10 | State 3 — CNN | Executable nine-layer tensor-shape and parameter-count derivation, plus actual seed-2026 error counts |
+| 6:10–7:25 | State 4 — validation | Actual eight-epoch BCE curve, minimum-loss checkpoint selection, clean AUROCs and baselines |
 | 7:25–9:15 | State 5 — robustness | Averaged gains, worst-condition AUROCs in both seeds, H&E comparator caveat |
 | 9:15–10:00 | Conclusion | What the results support, what remains unproven, next experiments |
 
 ## Scientific provenance
 
-All measured values are transcribed from `PathMNIST_Tellez_Inspired_.ipynb` and cross-checked against `PathMNIST_Colour_Robustness_Report(4).docx`. Dataset counts, architecture, training configuration, confusion-matrix errors and robustness metrics come from the executed experiment. The two image panels are embedded PNG outputs from notebook cells 5 and 9 (zero-based). There are no invented pixel values or logits. CNN shape arithmetic is derived from the implemented architecture and is not a recorded trained forward pass. Checkpoint selection is replayed from rounded validation logs, with the same selected epoch as the saved checkpoint summary.
+All measured values are transcribed from `PathMNIST_Tellez_Inspired_.ipynb` and cross-checked against `PathMNIST_Colour_Robustness_Report(4).docx`. Dataset counts, architecture, training configuration, confusion-matrix errors and robustness metrics come from the executed experiment. The two image panels are embedded PNG outputs from notebook cells 5 and 9 (zero-based). There are no invented pixel values or logits. CNN layer-shape and parameter arithmetic is executed in the presentation and checked against the implemented architecture (1,243,985 parameters). It is not a recorded trained forward pass. The validation-loss plot uses the notebook's saved rounded epoch logs. Checkpoint selection is replayed from rounded validation logs, with the same selected epoch as the saved checkpoint summary.
 
 The actual evaluation includes six training conditions, two paired seeds, eight epochs, 1,974 test patches, and 18 test conditions per trained CNN. HSV training improved observed synthetic RGB robustness; no statistical significance for the RGB–HSV contrasts or real-world clinical generalisation is claimed. H&E effects are small and should be interpreted against the HED reconstruction comparator as well as the unaugmented model.
 
