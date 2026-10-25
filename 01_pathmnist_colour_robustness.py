@@ -85,13 +85,26 @@ def state_2_colour_transforms():
 def state_3_cnn_and_predictions():
     text('# State 3 / 5 | CNN computation and observed prediction errors')
     channels = (16, 32, 32, 64, 64, 128, 128, 256, 256)  # @inspect channels
-    input_width, kernel, padding, stride = 64, 3, 1, 2
-    after_second_conv = (input_width + 2 * padding - kernel) // stride + 1  # @inspect after_second_conv
-    feature_width = input_width // (stride ** 4)  # @inspect feature_width
-    pooled_features = channels[-1]  # @inspect pooled_features
-    text(f'**Architecture-derived shape calculation:** stride-two convolution maps 64 to {after_second_conv}; four reductions give {feature_width}×{feature_width}. Pooling averages each of {pooled_features} channels over 16 positions. These are tensor dimensions, not measured trained activations.')
-    text('**Actually trained:** nine 3×3 convolutions (stride 2 at layers 2, 4, 6, 8), each with GroupNorm(8) + LeakyReLU. Feature tensor: 256 × 4 × 4; global average pooling → 256 features; dropout(0.5) → Linear(256,256) → LayerNorm → LeakyReLU → 1 logit.')
-    text('**Model size:** 1,243,985 trainable parameters, trained from scratch with binary cross-entropy. A sigmoid maps the logit to a score in [0,1].')
+    height, width, in_channels = 64, 64, 3  # @inspect height width in_channels
+    layer_shapes = []  # @inspect layer_shapes
+    convolution_parameters = 0  # @inspect convolution_parameters
+    for layer, out_channels in enumerate(channels, start=1):
+        stride = 2 if layer in (2, 4, 6, 8) else 1
+        height = (height + 2 - 3) // stride + 1  # 3×3 kernel, padding 1
+        width = (width + 2 - 3) // stride + 1
+        layer_shapes.append((layer, out_channels, height, width))
+        convolution_parameters += (out_channels * in_channels * 3 * 3) + (2 * out_channels)  # conv weights, GroupNorm scale/bias
+        in_channels = out_channels
+    head_parameters = (256 * 256 + 256) + (2 * 256) + (256 + 1)  # linear, LayerNorm, output linear
+    total_parameters = convolution_parameters + head_parameters  # @inspect total_parameters
+    assert (height, width, in_channels) == (4, 4, 256)
+    assert total_parameters == 1_243_985, 'Architecture does not match the notebook'
+    spatial_positions = height * width  # @inspect spatial_positions
+    shape_trace = ' → '.join(f'L{layer}: {c}×{h}×{w}' for layer, c, h, w in layer_shapes)
+    text(f'**Executable CNN shape trace (channels × height × width):** 3×64×64 → {shape_trace}. Stride 2 at convolution layers 2, 4, 6 and 8 halves the spatial dimensions.')
+    text(f'**Global average pooling:** the final 256 channels each contain {spatial_positions} spatial values, averaged into a 256-element feature vector. These are architecture-derived shapes, **not** saved trained activations.')
+    text('**Actual model design:** nine 3×3 convolutions with GroupNorm(8) + LeakyReLU; dropout(0.5) → Linear(256,256) → LayerNorm → LeakyReLU → one logit.')
+    text(f'**Verified model-size arithmetic:** {convolution_parameters:,} convolution/GroupNorm parameters + {head_parameters:,} classifier/LayerNorm parameters = **{total_parameters:,}** trainable parameters. The model was trained from scratch using binary cross-entropy.')
     text('**Prediction rule in the notebook:** score = sigmoid(logit); score ≥ 0.5 predicts TUM, otherwise NORM. Dropout is disabled in evaluation. A score is not an established clinical probability.')
     text('**Evidence boundary:** trained weights and per-patch logits are not embedded here. The following calculation uses the actual saved confusion counts rather than an invented example score.')
     norm_total, tumour_total = 741, 1233
@@ -101,7 +114,7 @@ def state_3_cnn_and_predictions():
     hsv_recall = (tumour_total - fn_hsv) / tumour_total  # @inspect hsv_recall
     control_specificity = (norm_total - fp_control) / norm_total  # @inspect control_specificity
     hsv_specificity = (norm_total - fp_hsv) / norm_total  # @inspect hsv_specificity
-    text(f'**Calculated from saved counts:** specificity falls from {control_specificity:.1%} to {hsv_specificity:.1%} as tumour recall rises. More normal patches are flagged for review.')
+    text(f'**Calculated from saved counts:** specificity falls from {control_specificity:.1%} to {hsv_specificity:.1%} as tumour recall rises. At the chosen threshold, the model would flag more normal patches as TUM.')
     text(f'**Real test-set predictions at threshold 0.5, seed 2026:** unaugmented: 31 normal patches labelled tumour (FP), 41 tumours missed (FN). Strong HSV: 68 FP, 24 FN. Tumour recall {control_recall:.1%} → {hsv_recall:.1%}; false positives also increase.')
     plot({'$schema':'https://vega.github.io/schema/vega-lite/v5.json','width':450,'height':145,
           'data':{'values':[{'model':'Unaugmented','error':'FP: NORM called TUM','patches':31},
@@ -112,7 +125,7 @@ def state_3_cnn_and_predictions():
                                   'y':{'field':'patches','type':'quantitative','title':'Misclassified patches'},
                                   'color':{'field':'error','type':'nominal'},'xOffset':{'field':'error'},
                                   'tooltip':[{'field':'model'},{'field':'error'},{'field':'patches'}]}})
-    note('4:40–6:10 | What happens: convolution extracts spatial features, pooling reduces each channel to one value, and a dense head produces a logit. What changes: compute feature-map dimensions from the real architecture, then compute recall and specificity from saved seed-2026 predictions. Why it matters: a threshold changes the missed-tumour versus unnecessary-review trade-off. Clearly identify this as architecture arithmetic plus observed evaluation, not a replay of trained activations.')
+    note('4:40–6:10 | What happens: convolution extracts spatial features, pooling reduces each channel to one value, and a dense head produces a logit. What changes: execute the full nine-layer shape/parameter calculation from the actual architecture, then compute recall and specificity from saved seed-2026 predictions. Why it matters: a threshold changes the missed-tumour versus unnecessary-review trade-off. Clearly identify this as architecture arithmetic plus observed evaluation, not a replay of trained activations.')
 
 
 def state_4_training_and_validation():
@@ -125,6 +138,13 @@ def state_4_training_and_validation():
     validation_bce = [0.4420, 0.2259, 0.1615, 0.1404, 0.1488, 0.0738, 0.2374, 0.1023]  # @inspect validation_bce
     selected_epoch = min(range(1, 9), key=lambda epoch: validation_bce[epoch - 1])  # @inspect selected_epoch
     text(f'**Replay of checkpoint selection from saved rounded logs:** minimum validation BCE selects epoch {selected_epoch} for weak H&E / seed 2026, consistent with the saved checkpoint summary. The training code selects using unrounded BCE across all eight epochs, never the best test score.')
+    plot({'$schema':'https://vega.github.io/schema/vega-lite/v5.json','width':450,'height':145,
+          'data':{'values':[{'epoch':i + 1,'val_bce':v} for i,v in enumerate(validation_bce)]},
+          'mark':{'type':'line','point':True},
+          'encoding':{'x':{'field':'epoch','type':'quantitative','title':'Epoch (weak H&E, seed 2026)','axis':{'tickMinStep':1}},
+                      'y':{'field':'val_bce','type':'quantitative','title':'Clean validation BCE','scale':{'zero':True}},
+                      'tooltip':[{'field':'epoch'},{'field':'val_bce','format':'.4f'}]}})
+    text(f'**Read this saved training curve:** epoch {selected_epoch} has the lowest validation BCE ({min(validation_bce):.4f}). Epoch 7 worsened despite a lower training loss; this does not by itself identify a software bug.')
     text('**Training stability:** fluctuating validation loss prompted investigation; it is not by itself a confirmed software bug. GroupNorm/LayerNorm, finite-gradient checks and batch-independence tests supported the revised implementation; their individual effects were not isolated.')
     plot({'$schema':'https://vega.github.io/schema/vega-lite/v5.json','width':460,'height':200,
           'data':{'values':[{'method':'Majority','auc':.5}, {'method':'Colour-only LR','auc':.9320},
@@ -135,7 +155,7 @@ def state_4_training_and_validation():
           'y':{'field':'method','type':'nominal','title':None,'sort':['Majority','Colour-only LR','Unaugmented CNN','HED reconstruction','Weak H&E','Strong H&E','Weak HSV','Strong HSV']},
           'tooltip':[{'field':'method'},{'field':'auc','format':'.4f'}]}})
     text('**Observed clean AUROC:** unaugmented 0.9928 (highest mean), weak H&E 0.9926, strong H&E 0.9926, weak HSV 0.9890, strong HSV 0.9914. High *clean* AUROC alone cannot answer the robustness question.')
-    note('6:10–7:25 | A valid model comparison uses the same architecture, sampling schedule and budget. Execute the minimum-loss selection over all eight saved values, rather than selecting the final epoch. The fluctuation between epochs six and seven is not proof of a bug. We select each model using minimum validation BCE across *all* eight epochs; we do not pick the best test AUROC. The chart uses observed saved clean-test means, with majority and 30-feature colour-only logistic regression as reference baselines. The colour-only AUROC of 0.932 shows global colour carries predictive signal, but does not prove that the CNN learned morphology independently of colour.')
+    note('6:10–7:25 | A valid model comparison uses the same architecture, sampling schedule and budget. Execute the minimum-loss selection over all eight saved values, rather than selecting the final epoch. The fluctuation between epochs six and seven is not proof of a bug. We select each model using minimum validation BCE across *all* eight epochs; we do not pick the best test AUROC. Point to the saved validation-BCE curve (epoch 6 is best) before reading the clean-test AUROC chart. The AUROC chart uses observed saved means, with majority and 30-feature colour-only logistic regression as reference baselines. The colour-only AUROC of 0.932 shows global colour carries predictive signal, but does not prove that the CNN learned morphology independently of colour.')
 
 
 def state_5_robustness_evaluation():
