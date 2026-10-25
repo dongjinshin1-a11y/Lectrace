@@ -54,8 +54,8 @@ def state_1_input_and_data():
                                    'xOffset':{'field':'class'},'tooltip':[{'field':'class'},{'field':'split'},{'field':'count'}]}})
     source_size, input_size = 128, 64  # @inspect source_size input_size
     pixels_per_output = (source_size // input_size) ** 2  # @inspect pixels_per_output
-    text(f'**Actual preprocessing:** each output pixel averages {pixels_per_output} source pixels within the same colour channel, rounds to uint8, then scales by 255 before CNN input.')
-    plot({'width':600, 'height':250, 'data':{'values':[{'url':FIGURES['training_examples']}]}, 'mark':{'type':'image','width':600,'height':250}, 'encoding':{'url':{'field':'url','type':'nominal'}}})
+    text(f'**Actual preprocessing:** each output pixel averages {pixels_per_output} source pixels within the same colour channel, rounds to uint8, then divides by 255 before CNN input.')
+    plot({'width':500, 'height':210, 'data':{'values':[{'url':FIGURES['training_examples']}]}, 'mark':{'type':'image','width':500,'height':210}, 'encoding':{'x':{'value':250},'y':{'value':105},'url':{'field':'url','type':'nominal'}}})
     text('**Saved notebook figure:** real NORM (top) and TUM (bottom) training patches after resizing. These are not test examples or newly generated images.')
     text('All six CNNs use the same partitions and 64×64 inputs scaled to [0, 1]. Balanced training batches contain 32 NORM + 32 TUM; validation/test retain natural prevalence.')
     note('2:00–3:00 | What happens: filter original labels 6 and 8, resize 128 to 64, and scale intensities. What changes: four source pixels contribute to each output pixel. Why it matters: lower compute cost at the expense of spatial detail. Show the actual training-patch figure. Explain 32+32 sampling only during training; evaluation retains natural prevalence. Source images were already colour-normalised.')
@@ -64,7 +64,7 @@ def state_1_input_and_data():
 def state_2_colour_transforms():
     text('# State 2 / 5 | What is the intervention, and what is the stress test?')
     text('**Training intervention:** weak H&E multiplies estimated H/E concentrations by 0.95–1.05; strong H&E by 0.80–1.20. Weak HSV shifts hue ±0.05 turns and scales S/V ×0.90–1.10; strong HSV uses ±0.15 turns and ×0.70–1.30.')
-    plot({'width':650, 'height':260, 'data':{'values':[{'url':FIGURES['he_examples']}]}, 'mark':{'type':'image','width':650,'height':260}, 'encoding':{'url':{'field':'url','type':'nominal'}}})
+    plot({'width':500, 'height':210, 'data':{'values':[{'url':FIGURES['he_examples']}]}, 'mark':{'type':'image','width':500,'height':210}, 'encoding':{'x':{'value':250},'y':{'value':105},'url':{'field':'url','type':'nominal'}}})
     text('**Saved notebook transformation figure:** original training patches and H/E multipliers (1.15,0.95), (0.95,1.15), (0.88,0.88), (1.12,1.12). These are qualitative demonstrations, not the fixed evaluation stress levels or measured laboratory distributions.')
     severity = 4  # @inspect severity
     delta = 0.04 * severity  # @inspect delta
