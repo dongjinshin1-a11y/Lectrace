@@ -13,7 +13,7 @@ Use the right arrow key to advance through the code and inspect variables. Read 
 | 0:00–2:00 | Introduction | Pathology problem, two research questions, controlled experiment |
 | 2:00–3:00 | State 1 — input | Real split counts, binary filtering, 2×2 averaging, balanced batches |
 | 3:00–4:40 | State 2 — colour | The actual augmentation parameter ranges, RGB stress operator, reconstruction comparator |
-| 4:40–6:10 | State 3 — CNN | Executable nine-layer tensor-shape and parameter-count derivation, plus actual seed-2026 error counts |
+| 4:40–6:10 | State 3 — CNN | Executable nine-layer tensor-shape and parameter-count derivation, plus actual seed-2026 error counts; checkpoint replay appears when exported |
 | 6:10–7:25 | State 4 — validation | Actual eight-epoch BCE curve, minimum-loss checkpoint selection, clean AUROCs and baselines |
 | 7:25–9:15 | State 5 — robustness | Averaged gains, worst-condition AUROCs in both seeds, H&E comparator caveat |
 | 9:15–10:00 | Conclusion | What the results support, what remains unproven, next experiments |
@@ -24,7 +24,28 @@ All measured values are transcribed from `PathMNIST_Tellez_Inspired_.ipynb` and 
 
 The actual evaluation includes six training conditions, two paired seeds, eight epochs, 1,974 test patches, and 18 test conditions per trained CNN. HSV training improved observed synthetic RGB robustness; no statistical significance for the RGB–HSV contrasts or real-world clinical generalisation is claimed. H&E effects are small and should be interpreted against the HED reconstruction comparator as well as the unaugmented model.
 
-The charts are built from the saved numerical outputs. The site does not rerun PyTorch training or load checkpoints. The source notebook is the scientific implementation; the LecTrace Python file is an educational execution explanation.
+The charts are built from the saved numerical outputs. The site does not rerun PyTorch training or load checkpoints. If real_forward_trace.json is present, it replays recorded actual PyTorch checkpoint inference from that file. The source notebook is the scientific implementation; the LecTrace Python file is an educational execution explanation.
+
+## Verify a real trained CNN forward pass (without retraining)
+
+The notebook's output ZIP deliberately excluded all **.pt** checkpoints, so a trained forward pass cannot be reconstructed from charts or confusion counts. The repository includes [colab_export_real_forward.py](colab_export_real_forward.py) to export an authentic inference trace from the **existing** Google Drive checkpoint and official PathMNIST test patch.
+
+In Google Colab, with the same Google account that ran the original notebook:
+
+```python
+# Run in a Colab cell; this does not train a model.
+!pip -q install medmnist pillow
+!curl -fsSL https://raw.githubusercontent.com/dongjinshin1-a11y/Lectrace/main/colab_export_real_forward.py -o colab_export_real_forward.py
+!python colab_export_real_forward.py
+from google.colab import files
+files.download('real_forward_trace.json')
+```
+
+This checks for the original `cnn_hsv_strong_seed2026_best.pt` under `MyDrive/PathMNIST_HE_Robustness/tellez-inspired-gn-v5-budget64/final/`. Exported data include the **actual** sample, nine recorded convolution activations, actual logits, sigmoid scores and predictions for clean versus severity-4 RGB-stressed input. It will refuse to invent values if the checkpoint is missing.
+
+Upload **only** `real_forward_trace.json` to the GitHub repository root. GitHub Actions will then rebuild the page with the trained-forward trace. Do not upload a multi-GB dataset, raw checkpoints, or Google Drive credentials to make the page work. Until this export is supplied, the page explicitly labels the CNN dimension calculation as architecture-only. This is the outstanding evidence gap for a full trained inference replay.
+
+The repeated CNN `for`-loop that made navigation appear frozen near step 97 was replaced with nine distinct executable convolution-shape steps. The built site has 114 steps and a reachable conclusion. Use the **beginning** link above; URLs with `step=80` will jump into the middle.
 
 ## Build locally
 
