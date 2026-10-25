@@ -33,7 +33,15 @@ jobs:
         run: uv run lectrace build --output _site
       - name: Validate complete trace and exporter
         run: |
-          python -m py_compile colab_export_real_forward.py
+          python -m py_compile colab_export_real_forward.py 01_pathmnist_colour_robustness.py
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('01_pathmnist_colour_robustness.py').read_text()
+          cues = ('0:00–2:20', '2:20–3:15', '3:15–4:35', '4:35–6:40',
+                  '6:40–7:50', '7:50–9:20', '9:20–10:00')
+          assert all(source.count('note(\'' + cue) == 1 for cue in cues), 'Missing/duplicated 10-minute presenter cue'
+          assert source.count('# State ') == 5, 'Expected exactly five selected execution states'
+          PY
           python - <<'PY'
           import json
           from pathlib import Path
@@ -42,7 +50,7 @@ jobs:
           assert trace['metadata']['error'] is None
           assert len(steps) >= 95, f'Unexpectedly truncated lecture: {len(steps)} steps'
           last = steps[-1]['stack'][-1]['source_line']
-          assert '9:15' in last, 'Final conclusion is not reachable'
+          assert '9:20' in last, 'Final 9:20–10:00 conclusion is not reachable'
           prior = steps[96]['stack'][-1]['source_line']
           print('Validated step count:', len(steps), '| step 97:', prior.strip())
           print('Validated final conclusion:', last[:70])
