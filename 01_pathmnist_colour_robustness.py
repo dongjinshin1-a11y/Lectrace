@@ -1,15 +1,18 @@
-"""LecTrace | PathMNIST colour robustness (10-minute execution explanation).
+"""LecTrace | PathMNIST colour robustness: five states, ten minutes.
 
-Grounding: saved outputs of PathMNIST_Tellez_Inspired_Reviewed_3(4).ipynb
-and PathMNIST_Colour_Robustness_Report(3).docx. This lecture does NOT
-retrain models or reload checkpoints. Counts, architecture, confusion
-matrices, loss values and results are observed. Small pixel, kernel,
-and sigmoid calculations explicitly demonstrate the executed operations
-rather than claiming to be saved trained-model inferences.
+Grounding: PathMNIST_Tellez_Inspired_.ipynb saved outputs and
+PathMNIST_Colour_Robustness_Report(4).docx, reviewed 25 October 2026.
+Images are the notebook's embedded figures. Results are saved observations;
+shape arithmetic is derived from the implemented architecture. No invented
+pixel intensities, logits or trained activations are used. This presentation
+does not load trained weights or claim to replay a trained forward pass.
+AI assisted with this presentation; the researcher must review and understand it.
 """
-import colorsys
-import math
+import json
+from pathlib import Path
 from lectrace import text, note, plot
+
+FIGURES = json.loads((Path(__file__).parent / "notebook_figures.json").read_text())
 
 
 def main():
@@ -30,7 +33,7 @@ def main():
     text('**Observed:** HSV training reduced degradation under synthetic RGB shifts in both seeds and improved absolute stressed AUROC. H&E training gave only tiny gains relative to HED reconstruction, not consistent gains relative to unaugmented training.')
     text('**Not established:** statistical significance of RGB-HSV effects, real multi-hospital robustness, calibration or clinical diagnostic usefulness.')
     text('**Next step:** lock the protocol, run more seeds, report RGB-effect confidence intervals and test a genuinely external, slide/patient-aware cohort.')
-    note('9:15–10:00 | Our unaugmented model had the highest mean clean AUROC, but that did not make it most robust. Strong HSV had the best *minimum* RGB AUROC in both observed seeds. This is evidence for an augmentation-by-stress interaction, not a claim of general stain invariance. Two seeds, synthetic stresses and earlier test-informed revisions make this exploratory. End on the clinical lesson: clean accuracy alone is not a deployment safety evaluation.')
+    note('9:15–10:00 | Our unaugmented model had the highest mean clean AUROC, but that did not make it most robust. Strong HSV had the best *minimum* RGB AUROC in both observed seeds. The descriptive pattern depends on augmentation and stress family; no formal interaction test or general stain-invariance claim is made. Two seeds, synthetic stresses and earlier test-informed revisions make this exploratory. End on the clinical lesson: clean accuracy alone is not a deployment safety evaluation.')
 
 
 def state_1_input_and_data():
@@ -49,48 +52,56 @@ def state_1_input_and_data():
                                    'y':{'field':'count','type':'quantitative','title':'Patches'},
                                    'color':{'field':'class','type':'nominal','title':'Class'},
                                    'xOffset':{'field':'class'},'tooltip':[{'field':'class'},{'field':'split'},{'field':'count'}]}})
-    illustrative_block = (60, 80, 100, 120)  # @inspect illustrative_block
-    averaged_pixel = round(sum(illustrative_block) / 4)  # @inspect averaged_pixel
-    text(f'**Implemented preprocessing:** 128×128 RGB → 64×64 by 2×2 block averaging; illustrative one-channel block {illustrative_block} → {averaged_pixel}. The four intensities are **not extracted from PathMNIST**.')
+    source_size, input_size = 128, 64  # @inspect source_size input_size
+    pixels_per_output = (source_size // input_size) ** 2  # @inspect pixels_per_output
+    text(f'**Actual preprocessing:** each output pixel averages {pixels_per_output} source pixels within the same colour channel, rounds to uint8, then scales by 255 before CNN input.')
+    plot({'width':600, 'height':250, 'data':{'values':[{'url':FIGURES['training_examples']}]}, 'mark':{'type':'image','width':600,'height':250}, 'encoding':{'url':{'field':'url','type':'nominal'}}})
+    text('**Saved notebook figure:** real NORM (top) and TUM (bottom) training patches after resizing. These are not test examples or newly generated images.')
     text('All six CNNs use the same partitions and 64×64 inputs scaled to [0, 1]. Balanced training batches contain 32 NORM + 32 TUM; validation/test retain natural prevalence.')
-    note('2:00–3:00 | Point to the measured class counts, including 1,974 held-out test patches. The classes are original PathMNIST labels 6 and 8, rather than all nine tissues. Follow the small 2×2 averaging computation: it demonstrates exactly how the real code downsamples each colour channel, but these four example intensities are invented. Balance only the training sampler, not the test set. Mention that PathMNIST source imagery was already colour-normalised; no new offline stain normalisation was added.')
+    note('2:00–3:00 | What happens: filter original labels 6 and 8, resize 128 to 64, and scale intensities. What changes: four source pixels contribute to each output pixel. Why it matters: lower compute cost at the expense of spatial detail. Show the actual training-patch figure. Explain 32+32 sampling only during training; evaluation retains natural prevalence. Source images were already colour-normalised.')
 
 
 def state_2_colour_transforms():
     text('# State 2 / 5 | What is the intervention, and what is the stress test?')
     text('**Training intervention:** weak H&E multiplies estimated H/E concentrations by 0.95–1.05; strong H&E by 0.80–1.20. Weak HSV shifts hue ±0.05 turns and scales S/V ×0.90–1.10; strong HSV uses ±0.15 turns and ×0.70–1.30.')
-    rgb_example = (0.55, 0.30, 0.45)  # @inspect rgb_example
-    hue, saturation, value = colorsys.rgb_to_hsv(*rgb_example)
-    hsv_changed = colorsys.hsv_to_rgb((hue + 0.10) % 1, min(1, saturation * 1.10), value)  # @inspect hsv_changed
-    text('**Executed teaching example:** RGB → HSV → hue-shifted RGB. These input values are illustrative; the conversion and hue wrapping are real Python operations.')
+    plot({'width':650, 'height':260, 'data':{'values':[{'url':FIGURES['he_examples']}]}, 'mark':{'type':'image','width':650,'height':260}, 'encoding':{'url':{'field':'url','type':'nominal'}}})
+    text('**Saved notebook transformation figure:** original training patches and H/E multipliers (1.15,0.95), (0.95,1.15), (0.88,0.88), (1.12,1.12). These are qualitative demonstrations, not the fixed evaluation stress levels or measured laboratory distributions.')
     severity = 4  # @inspect severity
     delta = 0.04 * severity  # @inspect delta
     gains = (1 + delta, 1.0, 1 - delta)  # @inspect gains
-    stressed_rgb = tuple(min(1, max(0, c * g)) for c, g in zip(rgb_example, gains))  # @inspect stressed_rgb
-    text(f'**Actual RGB stress recipe, red-dominant level {severity}:** channel gains {gains} → illustrative pixel {tuple(round(x, 3) for x in stressed_rgb)}. Increasing severity changes colour, not spatial tissue structure.')
+    he_delta = 0.08 * severity  # @inspect he_delta
+    he_factors = (1 + he_delta, 1 - he_delta / 2)  # @inspect he_factors
+    text(f'**Executed stress-parameter calculations, level {severity}:** RGB red-dominant gains = {gains}; H-dominant H/E multipliers = {he_factors}. These reproduce the notebook operators; RGB values are clipped to [0,1].')
+    text('**What changes:** colour intensities; pixel locations stay fixed. The stressed appearance is synthetic and is not proof of real scanner or laboratory variation.')
     plot({'$schema':'https://vega.github.io/schema/vega-lite/v5.json','width':450,'height':145,
           'data':{'values':[{'severity':s,'channel':ch,'gain':round(g,2)} for s in range(5) for ch,g in [('R',1+.04*s),('G',1),('B',1-.04*s)]]},
           'mark':{'type':'line','point':True},'encoding':{'x':{'field':'severity','type':'quantitative','title':'RGB stress severity','axis':{'tickMinStep':1}},
           'y':{'field':'gain','type':'quantitative','title':'Channel multiplier','scale':{'domain':[.8,1.2]}},
           'color':{'field':'channel','type':'nominal'},'tooltip':[{'field':'severity'},{'field':'channel'},{'field':'gain'}]}})
     text('**Fair comparator:** H&E augmentation vs HED conversion-and-reconstruction at factors (1,1). HSV augmentation vs the unaugmented CNN. H&E stress level 0 is reconstructed RGB; RGB stress level 0 is untouched RGB.')
-    note('3:00–4:40 | Distinguish what the model *sees while training* (randomly sampled H&E or HSV augmentation at 80% probability) from how *robustness is tested* (fixed RGB channel-gain or H&E shifts). The small HSV example runs a real coloursys transformation but is not a sampled PathMNIST pixel. For the RGB stress, execute delta = 0.04 × level. At level four R goes up 16%, B goes down 16%. This is the exact form used in the notebook. Explain the reconstruction control: HED conversion can itself modify RGB, so comparing H&E training only with the untouched model may conflate two effects.')
+    note('3:00–4:40 | What happens: training samples random colour changes with probability 0.8; testing uses fixed stresses. What changes: execute RGB gain and H/E factor calculations at severity four. Why it matters: H increases to 1.32, exceeding the strong-training maximum of 1.20. Explain HED reconstruction as the reference for H&E stresses; RGB uses untouched input. The saved figure demonstrates transformations on training patches, not unseen clinical data.')
 
 
 def state_3_cnn_and_predictions():
-    text('# State 3 / 5 | From an augmented patch to a tumour score')
+    text('# State 3 / 5 | CNN computation and observed prediction errors')
     channels = (16, 32, 32, 64, 64, 128, 128, 256, 256)  # @inspect channels
-    sizes = (64, 32, 32, 16, 16, 8, 8, 4, 4)  # @inspect sizes
+    input_width, kernel, padding, stride = 64, 3, 1, 2
+    after_second_conv = (input_width + 2 * padding - kernel) // stride + 1  # @inspect after_second_conv
+    feature_width = input_width // (stride ** 4)  # @inspect feature_width
+    pooled_features = channels[-1]  # @inspect pooled_features
+    text(f'**Architecture-derived shape calculation:** stride-two convolution maps 64 to {after_second_conv}; four reductions give {feature_width}×{feature_width}. Pooling averages each of {pooled_features} channels over 16 positions. These are tensor dimensions, not measured trained activations.')
     text('**Actually trained:** nine 3×3 convolutions (stride 2 at layers 2, 4, 6, 8), each with GroupNorm(8) + LeakyReLU. Feature tensor: 256 × 4 × 4; global average pooling → 256 features; dropout(0.5) → Linear(256,256) → LayerNorm → LeakyReLU → 1 logit.')
     text('**Model size:** 1,243,985 trainable parameters, trained from scratch with binary cross-entropy. A sigmoid maps the logit to a score in [0,1].')
-    illustrative_logit = 1.2  # @inspect illustrative_logit
-    illustrative_score = 1 / (1 + math.exp(-illustrative_logit))  # @inspect illustrative_score
-    text(f'**Math demonstration only:** sigmoid({illustrative_logit}) = {illustrative_score:.3f}. This is **not** a checkpoint prediction and is not calibrated as a clinical probability.')
+    text('**Prediction rule in the notebook:** score = sigmoid(logit); score ≥ 0.5 predicts TUM, otherwise NORM. Dropout is disabled in evaluation. A score is not an established clinical probability.')
+    text('**Evidence boundary:** trained weights and per-patch logits are not embedded here. The following calculation uses the actual saved confusion counts rather than an invented example score.')
     norm_total, tumour_total = 741, 1233
     fp_control, fn_control = 31, 41  # @inspect fp_control fn_control
     fp_hsv, fn_hsv = 68, 24  # @inspect fp_hsv fn_hsv
     control_recall = (tumour_total - fn_control) / tumour_total  # @inspect control_recall
     hsv_recall = (tumour_total - fn_hsv) / tumour_total  # @inspect hsv_recall
+    control_specificity = (norm_total - fp_control) / norm_total  # @inspect control_specificity
+    hsv_specificity = (norm_total - fp_hsv) / norm_total  # @inspect hsv_specificity
+    text(f'**Calculated from saved counts:** specificity falls from {control_specificity:.1%} to {hsv_specificity:.1%} as tumour recall rises. More normal patches are flagged for review.')
     text(f'**Real test-set predictions at threshold 0.5, seed 2026:** unaugmented: 31 normal patches labelled tumour (FP), 41 tumours missed (FN). Strong HSV: 68 FP, 24 FN. Tumour recall {control_recall:.1%} → {hsv_recall:.1%}; false positives also increase.')
     plot({'$schema':'https://vega.github.io/schema/vega-lite/v5.json','width':450,'height':145,
           'data':{'values':[{'model':'Unaugmented','error':'FP: NORM called TUM','patches':31},
@@ -101,7 +112,7 @@ def state_3_cnn_and_predictions():
                                   'y':{'field':'patches','type':'quantitative','title':'Misclassified patches'},
                                   'color':{'field':'error','type':'nominal'},'xOffset':{'field':'error'},
                                   'tooltip':[{'field':'model'},{'field':'error'},{'field':'patches'}]}})
-    note('4:40–6:10 | Point out that the *architecture* and parameter count are from the actual PyTorch notebook. Trace the progression from image through convolutional feature maps, global pooling and a one-logit classifier. There are no saved weights in this presentation, so the 1.2-logit example explains sigmoid only. Then show genuinely observed predictions: both models rank clean examples very well, yet at the fixed threshold their tumour recall and false-positive behaviour differ. A stronger recall does not automatically make a model clinically preferable without threshold selection and calibration.')
+    note('4:40–6:10 | What happens: convolution extracts spatial features, pooling reduces each channel to one value, and a dense head produces a logit. What changes: compute feature-map dimensions from the real architecture, then compute recall and specificity from saved seed-2026 predictions. Why it matters: a threshold changes the missed-tumour versus unnecessary-review trade-off. Clearly identify this as architecture arithmetic plus observed evaluation, not a replay of trained activations.')
 
 
 def state_4_training_and_validation():
@@ -111,7 +122,10 @@ def state_4_training_and_validation():
     val_bce_epoch7 = 0.2374  # @inspect val_bce_epoch7
     loss_increase = val_bce_epoch7 - val_bce_epoch6  # @inspect loss_increase
     text(f'**Actual log example:** weak H&E, seed 2026: clean validation BCE at epoch 6 = {val_bce_epoch6:.4f}, epoch 7 = {val_bce_epoch7:.4f} (worsened by {loss_increase:.4f}).')
-    text('**Selection rule:** after all eight epochs, retain whichever checkpoint had the **lowest clean validation BCE**. This example does **not** assert epoch 6 was globally optimal. Test scores never select checkpoints in the revised run.')
+    validation_bce = [0.4420, 0.2259, 0.1615, 0.1404, 0.1488, 0.0738, 0.2374, 0.1023]  # @inspect validation_bce
+    selected_epoch = min(range(1, 9), key=lambda epoch: validation_bce[epoch - 1])  # @inspect selected_epoch
+    text(f'**Replay of checkpoint selection from saved rounded logs:** minimum validation BCE selects epoch {selected_epoch} for weak H&E / seed 2026, consistent with the saved checkpoint summary. The training code selects using unrounded BCE across all eight epochs, never the best test score.')
+    text('**Training stability:** fluctuating validation loss prompted investigation; it is not by itself a confirmed software bug. GroupNorm/LayerNorm, finite-gradient checks and batch-independence tests supported the revised implementation; their individual effects were not isolated.')
     plot({'$schema':'https://vega.github.io/schema/vega-lite/v5.json','width':460,'height':200,
           'data':{'values':[{'method':'Majority','auc':.5}, {'method':'Colour-only LR','auc':.9320},
                             {'method':'Unaugmented CNN','auc':.9928},{'method':'HED reconstruction','auc':.9877},
@@ -121,12 +135,15 @@ def state_4_training_and_validation():
           'y':{'field':'method','type':'nominal','title':None,'sort':['Majority','Colour-only LR','Unaugmented CNN','HED reconstruction','Weak H&E','Strong H&E','Weak HSV','Strong HSV']},
           'tooltip':[{'field':'method'},{'field':'auc','format':'.4f'}]}})
     text('**Observed clean AUROC:** unaugmented 0.9928 (highest mean), weak H&E 0.9926, strong H&E 0.9926, weak HSV 0.9890, strong HSV 0.9914. High *clean* AUROC alone cannot answer the robustness question.')
-    note('6:10–7:25 | A valid model comparison uses the same architecture, sampling schedule and budget. Demonstrate the real validation loss fluctuation between epochs six and seven. We select each model using minimum validation BCE across *all* eight epochs; we do not pick the best test AUROC. The chart uses observed saved clean-test means, with majority and 30-feature colour-only logistic regression as reference baselines. The colour-only AUROC of 0.932 shows global colour carries predictive signal, but does not prove that the CNN learned morphology independently of colour.')
+    note('6:10–7:25 | A valid model comparison uses the same architecture, sampling schedule and budget. Execute the minimum-loss selection over all eight saved values, rather than selecting the final epoch. The fluctuation between epochs six and seven is not proof of a bug. We select each model using minimum validation BCE across *all* eight epochs; we do not pick the best test AUROC. The chart uses observed saved clean-test means, with majority and 30-feature colour-only logistic regression as reference baselines. The colour-only AUROC of 0.932 shows global colour carries predictive signal, but does not prove that the CNN learned morphology independently of colour.')
 
 
 def state_5_robustness_evaluation():
     text('# State 5 / 5 | Does robustness survive synthetic colour shifts?')
     text('**Definition:** degradation = reference AUROC − stressed AUROC. Augmentation gain = comparator degradation − augmented-model degradation. A positive gain means *less* degradation, not necessarily higher absolute stressed AUROC.')
+    strong_seed_gains = (0.0146, 0.0062)  # @inspect strong_seed_gains
+    mean_from_rounded_seeds = sum(strong_seed_gains) / len(strong_seed_gains)  # @inspect mean_from_rounded_seeds
+    text(f'**Aggregation example:** strong HSV RGB gains are positive in both saved seeds; their rounded values average to {mean_from_rounded_seeds:.4f}. Final reported means below come from the notebook summary, calculated before rounding.')
     weak_gain, strong_gain = 0.0108, 0.0104  # @inspect weak_gain strong_gain
     weak_absolute, strong_absolute = 0.0071, 0.0090  # @inspect weak_absolute strong_absolute
     text(f'**Observed averaged RGB contrasts vs unaugmented:** weak HSV gain +{weak_gain:.4f}, absolute stressed AUROC +{weak_absolute:.4f}; strong HSV gain +{strong_gain:.4f}, absolute stressed AUROC +{strong_absolute:.4f}. Each averages both directions, levels 1–4, and the two seeds.')
