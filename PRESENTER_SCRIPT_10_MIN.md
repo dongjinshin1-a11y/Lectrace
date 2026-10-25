@@ -1,89 +1,85 @@
-# Ten-minute LecTrace speaking guide (MD6329)
+# LecTrace — 10-minute rehearsal script (MD6329)
 
-**Format required by the lecturer:** approximately 10 minutes, with a 2–3 minute introduction, 3–5 carefully chosen *execution states*, and a concluding result with a healthcare interpretation. This guide uses **five states**. Speak to an imaginary audience and advance through the code, stopping at the indicated variables; do not click through every trace step at uniform speed. **A video is optional.**
+**Lecturer's structure:** 2–3 minutes for the healthcare problem and approach, then **3–5 selective execution states**, then findings and healthcare meaning. We use **five states**. Present by stepping through LecTrace, not by reading every source line. **No video is required.**
 
-**Timing:** 0:00–2:20 introduction; 2:20–3:15 State 1; 3:15–4:35 State 2; 4:35–6:40 State 3; 6:40–7:50 State 4; 7:50–9:20 State 5; 9:20–10:00 conclusion. **Total: exactly 10:00.**
+| Clock | Segment | Duration |
+|---|---|---|
+| 0:00–2:20 | Problem, motivation, research questions, six training conditions | 2:20 |
+| 2:20–3:15 | State 1: data entering the CNN | 0:55 |
+| 3:15–4:35 | State 2: colour manipulation | 1:20 |
+| 4:35–6:40 | State 3: CNN computation and prediction | 2:05 |
+| 6:40–7:50 | State 4: training and checkpoint choice | 1:10 |
+| 7:50–9:20 | State 5: robustness metrics | 1:30 |
+| 9:20–10:00 | Conclusion and clinical relevance | 0:40 |
 
-## 0:00–2:20 — Healthcare problem, motivation and approach
+The spoken material below is intentionally concise: use the remaining seconds within each segment to **advance through code and point to the changing variables or plots**. Rehearse with a clock because real speaking speed differs.
 
-“Pathology tissue sections are commonly stained with haematoxylin and eosin. Haematoxylin highlights nuclei and eosin highlights other tissue structures. Unfortunately, the appearance of the resulting colour image can vary with laboratory staining procedures and acquisition settings. A CNN might score well on images resembling the data it saw in training and still be sensitive to those appearance changes. In a future pathology-support workflow that would be undesirable, because reliable tissue discrimination is more important than good performance on just one familiar colour distribution.
+## 0:00–2:20 | Introduction
 
-“My mini-project focuses on two categories: normal colon mucosa, NORM, and colorectal tumour epithelium, TUM. The dataset is PathMNIST. This is a **binary patch-classification research exercise**, not a clinical diagnostic system or patient-level classifier.
+“Haematoxylin and eosin staining is widely used to inspect colorectal tissue. The colours of stained images can vary with laboratory procedures and image acquisition, even where the underlying tissue category is unchanged. If an AI model performs very well on familiar images but is sensitive to colour changes, that could be problematic for pathology support.
 
-“I ask two questions. First, does training with colour augmentation preserve the ability to distinguish NORM from TUM on original images? Second, does augmentation prevent a drop in discrimination when test-image colours are perturbed? These are different questions: a model can have nearly perfect original-image AUROC while being comparatively fragile under a specific synthetic shift.
+“My project investigates **binary classification** of normal colon mucosa, or NORM, versus colorectal tumour epithelium, or TUM, using PathMNIST. This is patch classification, not patient diagnosis.
 
-“I compare six training conditions: no colour transformation, an HED conversion-and-reconstruction control, weak and strong H&E augmentation, and weak and strong HSV augmentation. The CNN architecture and eight-epoch budget are kept fixed across two paired random seeds, giving twelve trained models. The evaluation has eighteen conditions per model: original RGB, HED reconstruction, and sixteen nonzero stress conditions across two families, two directions and four levels. I will now show **five selective execution states**: input, colour processing, CNN computation, checkpoint selection and robustness evaluation. The aim is to explain how a neural model produces and is evaluated on its output, not to display every training iteration.”
+“I ask two research questions. First, how does weak or strong H&E or HSV colour augmentation affect classification on original images? Second, does augmentation reduce loss of discrimination under progressively stronger synthetic colour shifts? Clean-image AUROC and performance under shifts must be distinguished.
 
-**Cue:** stop on the two research questions and six-condition design, then advance into State 1.
+“We trained a nine-convolution CNN under six conditions: unaugmented control, HED conversion-and-reconstruction control, weak/strong H&E augmentation and weak/strong HSV augmentation. Architecture, sampling and training budget were matched across two random seeds, for **twelve models**. Each model was evaluated under 18 conditions: the original image, HED reconstruction and 16 nonzero synthetic perturbations. I will step through five execution states that explain the input, processing, prediction, model selection and robustness result.”
 
-## 2:20–3:15 — State 1: What enters the model?
+**Display/click cue:** point to both research questions, the six-condition design and the five-state outline. Do not rush this opening: teacher expects 2–3 minutes.
 
-“First, we filter the official PathMNIST partitions to labels 6 and 8. The executed data contain 25,054 eligible patches, with 20,771 used for training, 2,309 for validation and 1,974 for testing. About 62% are tumour patches. The test images remain separate from training.
+## 2:20–3:15 | State 1: Input
 
-“The original 128 by 128 patches are reduced to 64 by 64 by averaging each two-by-two block. Pixel values are then scaled to zero to one. **What changes** here is resolution and numerical scale, not the class label. **Why it matters** is computational feasibility, although some fine image detail is lost. During training each batch has 32 NORM and 32 TUM patches; the natural class proportions remain in validation and test. These displayed example tissue patches come from training.”
+“First, we filter PathMNIST to labels six and eight. The executed partitions contain **25,054** patches, including **1,974** held-out test patches. The original 128-by-128 RGB images are reduced to 64-by-64 by averaging each two-by-two block, then scaled to zero-to-one. This reduces computation, though fine detail is lost. Training batches have 32 examples from each class, while validation and test use their natural proportions.”
 
-**Cue:** step through dataset counts and the 128-to-64 calculation; point to the genuine training images.
+**Display/click cue:** inspect total patches, input dimensions, four-pixel averaging and real training examples. **What changes:** size and pixel scale. **Why it matters:** reproducible, faster CNN input.
 
-## 3:15–4:35 — State 2: What changes during colour augmentation?
+## 3:15–4:35 | State 2: Colour operations
 
-“Second, colour processing is the intervention. In H&E augmentation I change estimated stain strengths after converting RGB into HED stain space and reconstructing RGB. Weak H&E samples factors between 0.95 and 1.05; strong H&E between 0.80 and 1.20. For HSV augmentation the weak setting changes hue by up to 0.05 turns and saturation/value by up to ten percent; the strong setting allows 0.15 hue turns and thirty percent changes to saturation/value. Training applies its assigned colour operation with probability 0.8.
+“Our intervention changes image colours during training. Weak H&E multiplies estimated H/E stain concentrations by 0.95–1.05; strong H&E uses 0.80–1.20. HSV instead changes hue, saturation and brightness within weak or strong predefined ranges.
 
-“Look at the executed severity-four calculation. For a red-dominant RGB stress, the gains become 1.16, 1.00 and 0.84. In the H-dominant H&E stress, the factors become 1.32 and 0.84. **What changes** is pixel colour intensity; the spatial location of the tissue is unchanged. **Why it matters** is that we can compare model sensitivity under a controlled perturbation.
+“Watch this severity-four stress calculation: red-dominant RGB shifts multiply channels by **1.16, 1.00 and 0.84**. H-dominant H&E shifts use factors **1.32 and 0.84**. They alter colour without moving the image's tissue structures. We use HED reconstruction as the primary H&E comparator, because RGB-to-HED conversion itself may change pixel values; HSV primarily uses the unaugmented comparator.”
 
-“One important detail is the comparator: H&E augmentation should principally be compared against HED reconstruction alone, because conversion and reconstruction can themselves alter image values. HSV is principally compared against the unaugmented model. These are controlled synthetic stresses, not observed differences between real hospitals.”
+**Display/click cue:** advance through severity, gains and H&E factors. **What changes:** colour intensity. **Why it matters:** controlled stress tests, not proof of real cross-hospital robustness.
 
-**Cue:** step through severity, gains and H&E factors; point to the original versus transformed training-image panel.
+## 4:35–6:40 | State 3: Actual CNN computation
 
-## 4:35–6:40 — State 3: How does the CNN produce a prediction?
+“The CNN has nine 3-by-3 convolution layers, each followed by GroupNorm and LeakyReLU. Layers 2, 4, 6 and 8 use stride two, reducing spatial resolution. Advancing through these calculations, the input **3×64×64** becomes a **256×4×4** feature map. Global average pooling gives 256 features, and the dense head gives one logit. Overall there are **1,243,985** trained parameters.
 
-“The actual PyTorch model uses nine 3-by-3 convolutions. Every layer uses GroupNorm and LeakyReLU. Convolutions 2, 4, 6 and 8 have stride two. Let me advance through these shape calculations: starting from 3 by 64 by 64, the model increases the number of feature channels while reducing the spatial width, reaching 256 by 4 by 4. After global average pooling, 256 values feed a small dense classification head which produces **one logit**. This model has 1,243,985 trainable parameters. GroupNorm and LayerNorm do not require BatchNorm running statistics.
+“Convolutions transform local image information into learned features. The final logit is converted into a score with the **sigmoid function**, and a score of 0.5 or above predicts TUM. The score is not a calibrated clinical probability.”
 
-“**What changes** across the convolutional layers is the representation: local colour and spatial patterns are transformed into higher-dimensional features. **Why it matters** is that the final classification score comes from a sequence of learned transformations, not just a hand-written image rule.
+**If the exported REAL trace appears:** “This is the same actual test patch before and after RGB severity-four stress. Inspect recorded convolution 1, 5 and 9 activations; then watch LecTrace calculate sigmoid from the **actual trained checkpoint logits** and apply the prediction rule. The score can shift without necessarily changing the class. A single patch does not prove overall robustness.”
 
-**When the genuine exported forward trace is present:** “Here is an actual held-out PathMNIST test patch, shown unmodified and with the defined level-four RGB shift. These displayed convolution activation summaries, the two logits and the scores came from the saved trained strong-HSV checkpoint. Watch the recorded output after convolution 1, 5 and 9; the means can change even though this is the same underlying tissue. Next, the trace *executes sigmoid on each real logit*. The predicted label is TUM if the score is at least 0.5, otherwise NORM. Read the actual on-screen values rather than memorising numbers. A change in score does not necessarily mean the predicted class flips. One patch alone cannot establish population-level robustness.”
+**If no trace appears:** “These are executed **architecture calculations**, not a replay of learned activations; a trained-checkpoint trace was not available to the site. We must not invent its logit.”
 
-**If the exported forward trace is NOT present:** “The nine shape calculations are executed, but without the trained weights I cannot reproduce the actual per-patch activations or logits on this webpage. I therefore show the saved error counts instead and do not call the shape calculation a trained forward pass.”
+“In the real clean-test predictions for seed 2026, unaugmented training produced **31 false positives and 41 false negatives**; strong HSV produced **68 false positives and 24 false negatives**. The 0.5 threshold therefore trades fewer missed tumours for more normal-patch alerts.”
 
-“On the full clean test, seed 2026, the unaugmented CNN marked 31 normal patches as tumour and missed 41 tumour patches. Strong HSV instead marked 68 normal patches as tumour and missed 24 tumour patches. **Why it matters:** at the fixed 0.5 threshold, higher tumour recall can be accompanied by more unnecessary normal-patch alerts. The raw sigmoid score is not established as a calibrated clinical probability.”
+**Display/click cue:** use most of these 2:05 to step through 9 layers, the genuine logit/sigmoid if available, and the two error pairs. **Why it matters:** this is how predictions arise and why mistakes have different clinical consequences.
 
-**Cue:** move deliberately through the nine architecture lines, then (if available) clean and stressed recorded forward values, logits, sigmoid and predictions; finish on real confusion counts.
+## 6:40–7:50 | State 4: Checkpoint selection
 
-## 6:40–7:50 — State 4: How do we choose a model checkpoint?
+“Each condition uses the same eight-epoch budget and Adam optimiser. Checkpoints were selected using **lowest clean validation binary cross-entropy**, not by test AUROC.
 
-“Fourth, the models all use the same paired seeds, eight epochs, balanced batches, optimiser and core architecture. Training uses Adam with learning rate 0.0003 and binary cross-entropy with logits. Importantly, we select each checkpoint by the **lowest clean validation BCE**, never by whichever model happened to perform best on the test set.
+“For weak H&E, seed 2026, validation BCE rose from **0.0738 at epoch six** to **0.2374 at epoch seven**. Our executed minimum calculation selects epoch six. A fluctuating loss curve is a training-stability observation, not by itself proof of a software bug. The unaugmented CNN had the highest mean clean AUROC, **0.9928**, but clean discrimination alone cannot tell us whether it is robust.”
 
-“This is a real curve for weak H&E, seed 2026. At epoch 6, clean validation BCE was approximately 0.0738, but at epoch 7 it increased to 0.2374. Our executed minimum-loss calculation therefore chooses epoch 6. **What changes** is the saved validation loss across epochs. **Why it matters** is that using the final epoch may be worse than selecting the best validation checkpoint. Fluctuating validation loss alone is not a proven code bug.
+**Display/click cue:** run the saved BCE list/minimum operation and point to the AUROC plot. **Why it matters:** comparison without test-based checkpoint cherry-picking.
 
-“The clean-test AUROC of the unaugmented model was 0.9928, the highest mean among the CNN settings. A colour-only logistic-regression baseline nevertheless scored 0.9320, reminding us that colour statistics alone contain predictive information. High clean AUROC, however, does not answer the question of how the models behave under colour stress.”
+## 7:50–9:20 | State 5: Robustness comparison
 
-**Cue:** step the BCE list and selected-epoch calculation; point to the clean-AUROC comparison.
+“We define degradation as reference AUROC minus stressed AUROC. A positive augmentation gain means **less** degradation than the appropriate comparator, but we must also check absolute stressed AUROC.
 
-## 7:50–9:20 — State 5: Did augmentation reduce stress degradation?
+“Under synthetic RGB stress, weak and strong HSV reduced average degradation by **0.0108 and 0.0104 AUROC**, and increased stressed AUROC by **0.0071 and 0.0090** relative to unaugmented training. Strong HSV gave the highest **minimum** RGB-stressed AUROC in both tested seeds: **0.9762 and 0.9833**.
 
-“Finally, the robust comparison distinguishes absolute performance from degradation. Degradation is reference AUROC minus stressed AUROC. A positive augmentation gain means the augmented model loses **less** AUROC than its comparator. We also examine absolute stressed AUROC to avoid mistaking a weak baseline for true robustness.
+“In contrast, H&E augmentation improved H&E-stress degradation by just **0.0006 and 0.0004**, and those tiny effects are relative to **HED reconstruction**, not evidence of gains over unaugmented training.
 
-“Across the synthetic RGB stress levels and directions, weak HSV reduced mean degradation by 0.0108 AUROC units compared with no colour augmentation; strong HSV reduced it by 0.0104. Both also improved **absolute stressed AUROC**, by 0.0071 and 0.0090 respectively. These are averages over both directions, four levels and two seeds.
+“Only two seeds were trained; perturbations were synthetic; and displayed uncertainty does not establish statistical significance for RGB-HSV differences. The result is exploratory, not proof of clinical generalisation.”
 
-“Looking at the worst tested RGB condition in each seed, strong HSV achieved a minimum AUROC of 0.9762 and 0.9833, higher than the corresponding unaugmented results of 0.9209 and 0.9601. The plotted vertical axis is zoomed: look at the numerical labels before interpreting visual distances.
+**Display/click cue:** execute the seed-average gain, show both absolute-gain numbers and the worst-condition figure. **What changes:** AUROC under colour stress. **Why it matters:** ranking shifts when robustness, not clean AUROC, is the objective.
 
-“Under H&E stress, gains were much smaller: about 0.0006 and 0.0004 for weak and strong H&E, and those are **relative to the reconstruction control**, not evidence of superiority over unaugmented training. **What changes** in this state is the metric under progressively altered colours. **Why it matters** is that resilience depends on the augmentation and the kind of shift tested.
+## 9:20–10:00 | Conclusion
 
-“Both HSV seeds showed descriptive improvements, but with only two training seeds, synthetic stresses and no displayed confidence intervals for the RGB gain, I cannot claim statistical significance or real-world hospital robustness.”
+“The key finding is **perturbation-specific robustness**. The unaugmented CNN had the highest clean AUROC, but HSV training performed better under our tested synthetic RGB shifts. H&E benefits were very small and comparator-dependent.
 
-**Cue:** calculate seed-mean gain, discuss absolute gains, then stop on the worst-condition comparison and uncertainty.
-
-## 9:20–10:00 — Key result and healthcare interpretation
-
-“My main finding is not that one colour augmentation is universally best. The more defensible result is that the unaugmented CNN had the highest clean-image AUROC, while HSV-augmented models were more robust to our specific synthetic RGB changes. H&E augmentation offered only tiny robustness gains relative to its HED reconstruction control.
-
-“For healthcare AI, this illustrates why evaluating a familiar test set is not enough: we should examine anticipated appearance changes and clinically relevant errors. The next steps would be more training seeds, a locked protocol, patient-aware uncertainty analysis and independent real-laboratory data. These experiments are exploratory and do not establish clinical safety. Thank you.”
+“For healthcare AI, high accuracy on familiar images is not sufficient for safe deployment. More seeds, a locked evaluation protocol, patient-aware analysis and independent multi-laboratory data are needed before any clinical conclusion. Thank you.”
 
 ---
 
-## Submission checklist
-
-- Use the **opening URL** of LecTrace, not a URL with a saved step number.
-- Walk the audience through **five** computational states, not every training iteration.
-- Do not present hypothetical logits or colour-perturbed data as clinical validation.
-- To enable the **real checkpoint forward replay**, run the exporter in the original Google Colab account, download `real_forward_trace.json`, then upload it to the GitHub repository root.
-- The Python source is the submission; this Markdown speaking guide is supplementary. No video is required.
+**Before submission:** open LecTrace from the first step; check it reaches the conclusion; optionally enable real forward replay by uploading the genuine `real_forward_trace.json` exported from your own checkpoint. Only present numerical values that were recorded or recalculated from those records.
