@@ -4,9 +4,10 @@ Run this file in Google Colab; it loads an EXISTING best checkpoint and an actua
 official test patch. It DOES NOT train any model. The resulting JSON can be
 uploaded as real_forward_trace.json to the LecTrace GitHub repository.
 
-Quick Colab use:
+Quick Colab use (same Google account as the completed notebook):
   !pip -q install medmnist pillow
   !python colab_export_real_forward.py
+The original best checkpoint and experiment_config.json MUST both exist.
 The notebook's Drive location is used by default. Mount Google Drive when prompted.
 """
 from pathlib import Path
@@ -147,8 +148,25 @@ def main():
     saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
     if not (saved.get("mode") == MODEL_MODE and int(saved.get("seed")) == SEED):
         raise ValueError("Checkpoint mode / seed mismatch")
-    if saved.get("signature") != "b23920e3df2dc882":
-        raise ValueError("Checkpoint does not match the submitted experiment configuration")
+    # The notebook changes CONFIG_SIGNATURE after fingerprinting the actual
+    # training code/data and again after locking the eight-epoch budget.
+    # The value printed in its first configuration cell is NOT the final value.
+    config_path = RUN_OUTPUT / "experiment_config.json"
+    if not config_path.is_file():
+        raise FileNotFoundError(
+            f"Missing {config_path}. Export experiment_config.json from the "
+            "original completed notebook run; do not invent a signature."
+        )
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    expected_signature = config.get("config_signature")
+    if (not expected_signature or config.get("run_mode") != "final" or
+            config.get("version") != EXPERIMENT_ID):
+        raise ValueError("Experiment metadata is incomplete or mismatched")
+    if saved.get("signature") != expected_signature:
+        raise ValueError(
+            f"Trained checkpoint signature {saved.get('signature')!r} does "
+            f"not match final experiment metadata {expected_signature!r}"
+        )
     model = TissueCNN().eval()
     model.load_state_dict(saved["model"], strict=True)
     assert sum(p.numel() for p in model.parameters()) == 1_243_985
@@ -172,6 +190,8 @@ def main():
         "source_test_index": original_source_ix,
         "true_label": label,
         "checkpoint_sha256": digest,
+        "config_signature": expected_signature,
+        "provenance": "Real PyTorch evaluation-mode inference; no training or synthetic logits",
         "patch_png_data_url": png_data_url(raw_patch),
         "stressed_png_data_url": png_data_url(stressed_display),
         "stress_gains": [1.16, 1.0, 0.84],
@@ -181,6 +201,10 @@ def main():
         ],
     }
     assert trace["cases"][0]["features"][-1]["shape"] == [1, 256, 4, 4]
+    assert trace["cases"][1]["features"][-1]["shape"] == [1, 256, 4, 4]
+    for case in trace["cases"]:
+        assert np.isfinite(case["score"]) and 0.0 <= case["score"] <= 1.0
+        assert case["prediction"] == ("TUM" if case["score"] >= 0.5 else "NORM")
     DEST.write_text(json.dumps(trace, indent=2), encoding="utf-8")
     print(f"Exported {DEST.resolve()}")
     for case in trace["cases"]:
