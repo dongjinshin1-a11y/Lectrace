@@ -31,6 +31,22 @@ jobs:
           uv pip install lectrace
       - name: Build presentation
         run: uv run lectrace build --output _site
+      - name: Validate complete trace and exporter
+        run: |
+          python -m py_compile colab_export_real_forward.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          trace = json.loads(Path('_site/traces/01_pathmnist_colour_robustness.json').read_text())
+          steps = trace['steps']
+          assert trace['metadata']['error'] is None
+          assert len(steps) >= 95, f'Unexpectedly truncated lecture: {len(steps)} steps'
+          last = steps[-1]['stack'][-1]['source_line']
+          assert '9:15' in last, 'Final conclusion is not reachable'
+          prior = steps[96]['stack'][-1]['source_line']
+          print('Validated step count:', len(steps), '| step 97:', prior.strip())
+          print('Validated final conclusion:', last[:70])
+          PY
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
