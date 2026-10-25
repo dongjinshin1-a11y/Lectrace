@@ -13,7 +13,33 @@ from pathlib import Path
 from lectrace import text, note, plot
 
 FIGURES = json.loads((Path(__file__).parent / "notebook_figures.json").read_text())
+FORWARD_TRACE_PATH = Path(__file__).parent / 'real_forward_trace.json'
+FORWARD_TRACE = json.loads(FORWARD_TRACE_PATH.read_text()) if FORWARD_TRACE_PATH.exists() else None
 
+
+
+def convolution_shape(in_ch, out_ch, width, stride):
+    """Notebook's 3x3 bias-free Conv2d followed by GroupNorm(8)."""
+    out_width = (width + 2 - 3) // stride + 1
+    parameters = 9 * in_ch * out_ch + 2 * out_ch
+    return (out_ch, out_width, parameters)
+
+
+def show_recorded_inference(trace):
+    """Show only values exported by the original trained checkpoint (no guessed logits)."""
+    assert trace['source'] == 'saved_trained_checkpoint'
+    assert trace['seed'] == 2026 and trace['patch_index'] >= 0
+    text(f"**Verified trained sample:** official test patch index {trace['patch_index']}, true class {trace['true_label']}; checkpoint mode {trace['model_mode']}, seed {trace['seed']}.")
+    plot({'width':360, 'height':160, 'data':{'values':[{'url':trace['patch_png_data_url']}]},
+          'mark':{'type':'image','width':160,'height':160},
+          'encoding':{'x':{'value':90},'y':{'value':80},'url':{'field':'url','type':'nominal'}}})
+    for case in trace['cases']:
+        text(f"**Recorded {case['condition']}:** 3×64×64 input → " +
+             ' → '.join(f"{v['name']} {v['shape'][1:4]}" for v in case['features']) +
+             f" → actual logit {case['logit']:.6f} → sigmoid {case['score']:.6f} → prediction {case['prediction']}.")
+        text('**Real layer-activation summaries (not synthetic):** ' +
+             '; '.join(f"{v['name']} mean={v['mean']:.4f}, max={v['max']:.4f}" for v in case['features']))
+    text('These values were exported by real PyTorch forward hooks on the saved trained model. One patch illustrates the execution path; the aggregate AUROC still comes from the full 1,974-patch test set.')
 
 def main():
     text('# When colour changes, can a pathology CNN still recognise tumour tissue?')
@@ -84,27 +110,34 @@ def state_2_colour_transforms():
 
 def state_3_cnn_and_predictions():
     text('# State 3 / 5 | CNN computation and observed prediction errors')
-    channels = (16, 32, 32, 64, 64, 128, 128, 256, 256)  # @inspect channels
-    height, width, in_channels = 64, 64, 3  # @inspect height width in_channels
-    layer_shapes = []  # @inspect layer_shapes
-    convolution_parameters = 0  # @inspect convolution_parameters
-    for layer, out_channels in enumerate(channels, start=1):
-        stride = 2 if layer in (2, 4, 6, 8) else 1
-        height = (height + 2 - 3) // stride + 1  # 3×3 kernel, padding 1
-        width = (width + 2 - 3) // stride + 1
-        layer_shapes.append((layer, out_channels, height, width))
-        convolution_parameters += (out_channels * in_channels * 3 * 3) + (2 * out_channels)  # conv weights, GroupNorm scale/bias
-        in_channels = out_channels
-    head_parameters = (256 * 256 + 256) + (2 * 256) + (256 + 1)  # linear, LayerNorm, output linear
-    total_parameters = convolution_parameters + head_parameters  # @inspect total_parameters
-    assert (height, width, in_channels) == (4, 4, 256)
-    assert total_parameters == 1_243_985, 'Architecture does not match the notebook'
-    spatial_positions = height * width  # @inspect spatial_positions
-    shape_trace = ' → '.join(f'L{layer}: {c}×{h}×{w}' for layer, c, h, w in layer_shapes)
-    text(f'**Executable CNN shape trace (channels × height × width):** 3×64×64 → {shape_trace}. Stride 2 at convolution layers 2, 4, 6 and 8 halves the spatial dimensions.')
-    text(f'**Global average pooling:** the final 256 channels each contain {spatial_positions} spatial values, averaged into a 256-element feature vector. These are architecture-derived shapes, **not** saved trained activations.')
-    text('**Actual model design:** nine 3×3 convolutions with GroupNorm(8) + LeakyReLU; dropout(0.5) → Linear(256,256) → LayerNorm → LeakyReLU → one logit.')
-    text(f'**Verified model-size arithmetic:** {convolution_parameters:,} convolution/GroupNorm parameters + {head_parameters:,} classifier/LayerNorm parameters = **{total_parameters:,}** trainable parameters. The model was trained from scratch using binary cross-entropy.')
+    # Each distinct call advances one convolution; no repeated for-loop line in the viewer.
+    layer1 = convolution_shape(3, 16, 64, 1)  # @stepover
+    layer2 = convolution_shape(layer1[0], 32, layer1[1], 2)  # @stepover
+    layer3 = convolution_shape(layer2[0], 32, layer2[1], 1)  # @stepover
+    layer4 = convolution_shape(layer3[0], 64, layer3[1], 2)  # @stepover
+    layer5 = convolution_shape(layer4[0], 64, layer4[1], 1)  # @stepover
+    layer6 = convolution_shape(layer5[0], 128, layer5[1], 2)  # @stepover
+    layer7 = convolution_shape(layer6[0], 128, layer6[1], 1)  # @stepover
+    layer8 = convolution_shape(layer7[0], 256, layer7[1], 2)  # @stepover
+    layer9 = convolution_shape(layer8[0], 256, layer8[1], 1)  # @stepover
+    layers = [layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9]  # @inspect layers
+    conv_gn_parameters = sum(layer[2] for layer in layers)  # @inspect conv_gn_parameters
+    head_parameters = (256 * 256 + 256) + (2 * 256) + (256 + 1)
+    total_parameters = conv_gn_parameters + head_parameters  # @inspect total_parameters
+    assert layer9[:2] == (256, 4) and total_parameters == 1_243_985, "Check model against notebook"
+    text('**Nine visible CNN operations:** each successive line computes its layer output shape, with stride 2 at layers 2, 4, 6 and 8. The variable panel shows the changing channel count and spatial width.')
+    plot({'$schema':'https://vega.github.io/schema/vega-lite/v5.json','width':430,'height':155,
+          'data':{'values':[{'layer':0,'size':64}]+[{'layer':i,'size':ly[1]} for i,ly in enumerate(layers,1)]},
+          'mark':{'type':'line','point':True},
+          'encoding':{'x':{'field':'layer','type':'quantitative','axis':{'tickMinStep':1},'title':'CNN layer'},
+                      'y':{'field':'size','type':'quantitative','title':'Feature-map height / width'},
+                      'tooltip':[{'field':'layer'},{'field':'size'}]}})
+    text('**Recorded architecture, not a trained forward pass:** 3×64×64 input → 256×4×4 convolution output → global average pooling across 16 locations in each channel → 256 features → Dropout(0.5) → Linear(256,256) → LayerNorm → LeakyReLU → one logit.')
+    text(f'**Executable parameter count:** conv + GroupNorm {conv_gn_parameters:,}, head + LayerNorm {head_parameters:,}; total {total_parameters:,}. All values are computed from the notebook architecture; no invented activations are used.')
+    if FORWARD_TRACE is not None:
+        show_recorded_inference(FORWARD_TRACE)  # @stepover
+    else:
+        text('**Trained-forward evidence not available in this repository:** the source notebook saved model checkpoints to Google Drive, but did not include them in its exported archive. Run `colab_export_real_forward.py` inside your original Colab session, then add `real_forward_trace.json` to this repository. Until then, the shape calculation must not be described as trained-model inference.')
     text('**Prediction rule in the notebook:** score = sigmoid(logit); score ≥ 0.5 predicts TUM, otherwise NORM. Dropout is disabled in evaluation. A score is not an established clinical probability.')
     text('**Evidence boundary:** trained weights and per-patch logits are not embedded here. The following calculation uses the actual saved confusion counts rather than an invented example score.')
     norm_total, tumour_total = 741, 1233
@@ -125,7 +158,7 @@ def state_3_cnn_and_predictions():
                                   'y':{'field':'patches','type':'quantitative','title':'Misclassified patches'},
                                   'color':{'field':'error','type':'nominal'},'xOffset':{'field':'error'},
                                   'tooltip':[{'field':'model'},{'field':'error'},{'field':'patches'}]}})
-    note('4:40–6:10 | What happens: convolution extracts spatial features, pooling reduces each channel to one value, and a dense head produces a logit. What changes: execute the full nine-layer shape/parameter calculation from the actual architecture, then compute recall and specificity from saved seed-2026 predictions. Why it matters: a threshold changes the missed-tumour versus unnecessary-review trade-off. Clearly identify this as architecture arithmetic plus observed evaluation, not a replay of trained activations.')
+    note('4:40–6:10 | What happens: convolution extracts spatial features, pooling reduces each channel to one value, and a dense head produces a logit. What changes: execute the full nine-layer shape/parameter calculation from the actual architecture, then compute recall and specificity from saved seed-2026 predictions. Why it matters: a threshold changes the missed-tumour versus unnecessary-review trade-off. Each layer is now its own visible line, so the arrow key moves through meaningful shape changes rather than looping on the same line. If a recorded trace is present, explain the genuine layer activations and logit; otherwise explicitly distinguish shape arithmetic from trained inference.')
 
 
 def state_4_training_and_validation():
